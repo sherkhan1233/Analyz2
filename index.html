@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <title>PRO Аналитика продаж</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <style>
     body { font-family: Arial; padding: 20px; background:#f5f6fa }
     h1 { text-align: center; }
@@ -18,7 +18,7 @@
 <h1>🚀 PRO Аналитика продаж</h1>
 
 <div class="controls card">
-  <input type="file" id="fileInput" accept=".csv" />
+  <input type="file" id="fileInput" accept=".xlsx,.xls,.csv" />
   <select id="groupBy">
     <option value="hour">По часам</option>
     <option value="day">По дням</option>
@@ -56,19 +56,25 @@ let rawData = [];
 
 document.getElementById('fileInput').addEventListener('change', function(e) {
   const file = e.target.files[0];
-  Papa.parse(file, {
-    header: true,
-    skipEmptyLines: true,
-    complete: function(results) {
-      rawData = results.data;
-      fillPoints();
-      alert('Файл загружен');
-    }
-  });
+  const reader = new FileReader();
+
+  reader.onload = function(e) {
+    const data = new Uint8Array(e.target.result);
+    const workbook = XLSX.read(data, { type: 'array' });
+
+    const sheet = workbook.Sheets[workbook.SheetNames[0]];
+    rawData = XLSX.utils.sheet_to_json(sheet);
+
+    fillPoints();
+    alert('Excel файл загружен');
+  };
+
+  reader.readAsArrayBuffer(file);
 });
 
 function fillPoints(){
   const select = document.getElementById('filterPoint');
+  select.innerHTML = '<option value="all">Все точки</option>';
   const points = [...new Set(rawData.map(r=>r['Торговая точка']))];
   points.forEach(p=>{
     const opt = document.createElement('option');
@@ -122,11 +128,9 @@ function processData(){
       items.forEach(p=>{
         const clean = p.trim();
 
-        // категории
         const cat = extractCategory(clean);
         categoryStats[cat] = (categoryStats[cat]||0)+sum;
 
-        // товары
         productStats[clean] = (productStats[clean]||0)+1;
       });
     }
