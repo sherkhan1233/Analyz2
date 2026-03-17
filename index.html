@@ -2,208 +2,144 @@
 <html lang="ru">
 <head>
   <meta charset="UTF-8">
-  <title>PRO Аналитика продаж</title>
+  <title>Mini Analytics</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <style>
-    body { font-family: Arial; padding: 10px; background:#f5f6fa }
-    h1 { text-align: center; font-size:20px }
-    .controls { margin-bottom: 10px; display:flex; gap:8px; flex-wrap:wrap }
-    canvas { max-width: 100%; margin-top:10px }
-    .card { background:white; padding:10px; border-radius:10px; box-shadow:0 2px 6px rgba(0,0,0,0.08); margin-bottom:10px }
-    .grid { display:grid; grid-template-columns:1fr 1fr; gap:10px }
-    ul { margin:0; padding-left:18px }
+    body { font-family: Arial; background:#f5f6fa; display:flex; justify-content:center }
+    .app { width: 20vw; min-width:300px }
+    h1 { font-size:14px; text-align:center }
+    .card { background:white; padding:8px; border-radius:8px; margin-bottom:8px }
+    select, input, button { width:100%; margin-bottom:5px }
+    canvas { width:100% !important; height:120px !important }
+    ul { font-size:12px; padding-left:15px }
   </style>
 </head>
 <body>
+<div class="app">
 
-<h1>📊 Аналитика продаж</h1>
-
-<div class="controls card">
-  <input type="file" id="fileInput" accept=".xlsx,.xls,.csv" />
-  <select id="groupBy">
-    <option value="hour">Часы</option>
-    <option value="day">Дни</option>
-    <option value="week">Недели</option>
-    <option value="month">Месяцы</option>
-  </select>
-  <select id="filterPoint">
-    <option value="all">Все точки</option>
-  </select>
-  <button onclick="processData()">Анализ</button>
-</div>
+<h1>📊 Mini Dashboard</h1>
 
 <div class="card">
-  <canvas id="chart"></canvas>
+  <input type="file" id="fileInput" accept=".xlsx,.xls,.csv" />
+  <select id="filterPoint"><option value="all">Все точки</option></select>
+  <button onclick="processData()">Ок</button>
 </div>
 
-<div class="grid">
-  <div class="card">
-    <b>🍔 Категории</b>
-    <canvas id="categoryChart"></canvas>
-  </div>
-
-  <div class="card">
-    <b>🏆 ТОП товары</b>
-    <ul id="topProducts"></ul>
-  </div>
-</div>
-
-<div class="grid">
-  <div class="card">
-    <b>⏰ Лучшее время по категориям</b>
-    <ul id="categoryTime"></ul>
-  </div>
-
-  <div class="card">
-    <b>💰 Метрики</b>
-    <p id="metrics"></p>
-  </div>
-</div>
+<div class="card"><canvas id="chart"></canvas></div>
+<div class="card"><b>Категории</b><ul id="catList"></ul></div>
+<div class="card"><b>ТОП по категориям</b><ul id="topByCat"></ul></div>
+<div class="card"><b>⏰ Время</b><ul id="timeList"></ul></div>
 
 <script>
-let rawData = [];
+let rawData=[];
 
-document.getElementById('fileInput').addEventListener('change', function(e) {
-  const file = e.target.files[0];
-  const reader = new FileReader();
+const categories = {
+"Блюда":["Фарфале","Спагетти","Плов","Курица","Говядина","Манты","Лагман"],
+"Завтраки":["завтрак","омлет","каша","сырники","блины"],
+"Салаты":["салат","цезарь","греческий","нисуаз"],
+"Супы":["суп","борщ","харчо"],
+"Фастфуд":["сэндвич","круассан","чиабатта"],
+"Десерты":["торт","чизкейк","трайфл"],
+"Напитки":["cola","fanta","sprite","tea","кофе","red bull"],
+"Снеки":["lays","tuc","арахис","курт"],
+"Рамен":["ramen","big bon","samyang"],
+"Фрукты":["яблоко","банан","груша","мандарин"]
+};
 
-  reader.onload = function(e) {
-    const data = new Uint8Array(e.target.result);
-    const workbook = XLSX.read(data, { type: 'array' });
-    const sheet = workbook.Sheets[workbook.SheetNames[0]];
-    rawData = XLSX.utils.sheet_to_json(sheet);
-    fillPoints();
-  };
-
-  reader.readAsArrayBuffer(file);
-});
-
-function fillPoints(){
-  const select = document.getElementById('filterPoint');
-  select.innerHTML = '<option value="all">Все точки</option>';
-  const points = [...new Set(rawData.map(r=>r['Торговая точка']))];
-  points.forEach(p=>{
-    const opt = document.createElement('option');
-    opt.value = p;
-    opt.textContent = p;
-    select.appendChild(opt);
-  });
-}
-
-function extractCategory(name){
-  if(!name) return 'Прочее';
-  name = name.toLowerCase();
-  if(name.includes('cola')||name.includes('напит')) return 'Напитки';
-  if(name.includes('lay')||name.includes('чипс')) return 'Снеки';
-  if(name.includes('kitkat')||name.includes('bounty')) return 'Шоколад';
-  if(name.includes('куриц')||name.includes('салат')) return 'Еда';
+function getCategory(name){
+  name=name.toLowerCase();
+  for(const cat in categories){
+    if(categories[cat].some(k=>name.includes(k.toLowerCase()))) return cat;
+  }
   return 'Прочее';
 }
 
+document.getElementById('fileInput').addEventListener('change',e=>{
+ const reader=new FileReader();
+ reader.onload=e=>{
+  const wb=XLSX.read(new Uint8Array(e.target.result),{type:'array'});
+  rawData=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]]);
+  fillPoints();
+ };
+ reader.readAsArrayBuffer(e.target.files[0]);
+});
+
+function fillPoints(){
+ const sel=document.getElementById('filterPoint');
+ sel.innerHTML='<option value="all">Все точки</option>';
+ [...new Set(rawData.map(r=>r['Торговая точка']))].forEach(p=>{
+  let o=document.createElement('option');o.value=p;o.text=p;sel.appendChild(o);
+ });
+}
+
 function processData(){
-  const groupBy = document.getElementById('groupBy').value;
-  const selectedPoint = document.getElementById('filterPoint').value;
+ const point=document.getElementById('filterPoint').value;
+ let revenue={},catCount={},prodCat={},timeCat={};
 
-  const grouped = {};
-  const categoryStats = {};
-  const productStats = {};
-  const categoryTime = {};
+ rawData.forEach(r=>{
+  if(point!='all'&&r['Торговая точка']!=point) return;
+  let d=new Date(r['Дата / время']);
+  let sum=parseFloat(r['Сумма'])||0;
+  let hour=d.getHours();
+  revenue[hour]=(revenue[hour]||0)+sum;
 
-  let total = 0;
-  let count = 0;
+  let items=(r['Товары']||'').replace(/[\[\]]/g,'').split(',');
+  items.forEach(p=>{
+    let c=getCategory(p);
+    catCount[c]=(catCount[c]||0)+1;
 
-  rawData.forEach(row=>{
-    if(selectedPoint !== 'all' && row['Торговая точка'] !== selectedPoint) return;
+    if(!prodCat[c]) prodCat[c]={};
+    prodCat[c][p]=(prodCat[c][p]||0)+1;
 
-    const date = new Date(row['Дата / время']);
-    const sum = parseFloat(row['Сумма']) || 0;
-    const products = row['Товары'];
-
-    total += sum;
-    count++;
-
-    let key;
-    if(groupBy==='hour') key = date.getHours();
-    if(groupBy==='day') key = date.toLocaleDateString();
-    if(groupBy==='week') key = new Date(date.setDate(date.getDate()-date.getDay())).toLocaleDateString();
-    if(groupBy==='month') key = date.getFullYear()+'-'+(date.getMonth()+1);
-
-    grouped[key] = (grouped[key]||0)+sum;
-
-    if(products){
-      const items = products.replace(/[\[\]]/g,'').split(',');
-      items.forEach(p=>{
-        const clean = p.trim();
-
-        const cat = extractCategory(clean);
-        categoryStats[cat] = (categoryStats[cat]||0)+sum;
-
-        productStats[clean] = (productStats[clean]||0)+1;
-
-        // время по категории
-        if(!categoryTime[cat]) categoryTime[cat] = {};
-        const hour = date.getHours();
-        categoryTime[cat][hour] = (categoryTime[cat][hour]||0)+1;
-      });
-    }
+    if(!timeCat[c]) timeCat[c]={};
+    timeCat[c][hour]=(timeCat[c][hour]||0)+1;
   });
+ });
 
-  renderChart(grouped);
-  renderPie(categoryStats);
-  renderTop(productStats);
-  renderMetrics(total, count);
-  renderCategoryTime(categoryTime);
+ renderChart(revenue);
+ renderList('catList',catCount);
+ renderTopCat(prodCat);
+ renderTime(timeCat);
 }
 
-let chart;
 function renderChart(data){
-  const ctx = document.getElementById('chart');
-  if(chart) chart.destroy();
-  chart = new Chart(ctx, {
-    type:'bar',
-    data:{ labels:Object.keys(data), datasets:[{label:'Выручка', data:Object.values(data)}] }
-  });
+ new Chart(document.getElementById('chart'),{
+  type:'bar',data:{labels:Object.keys(data),datasets:[{data:Object.values(data)}]}
+ });
 }
 
-function renderPie(data){
-  new Chart(document.getElementById('categoryChart'),{
-    type:'pie',
-    data:{ labels:Object.keys(data), datasets:[{data:Object.values(data)}] }
-  });
+function renderList(id,data){
+ let ul=document.getElementById(id);ul.innerHTML='';
+ Object.entries(data).forEach(([k,v])=>{
+  let li=document.createElement('li');li.textContent=k+': '+v;ul.appendChild(li);
+ });
 }
 
-function renderTop(data){
-  const top = Object.entries(data).sort((a,b)=>b[1]-a[1]).slice(0,5);
-  const ul = document.getElementById('topProducts');
-  ul.innerHTML='';
-  top.forEach(([name,val])=>{
-    const li = document.createElement('li');
-    li.textContent = name + ' ('+val+')';
+function renderTopCat(data){
+ let ul=document.getElementById('topByCat');ul.innerHTML='';
+ Object.entries(data).forEach(([cat,items])=>{
+  let top=Object.entries(items).sort((a,b)=>b[1]-a[1])[0];
+  if(top){
+    let li=document.createElement('li');
+    li.textContent=`${cat}: ${top[0]}`;
     ul.appendChild(li);
-  });
+  }
+ });
 }
 
-function renderMetrics(total,count){
-  const avg = count? (total/count).toFixed(0):0;
-  document.getElementById('metrics').innerHTML = `Выручка: ${total}<br>Чеки: ${count}<br>Средний чек: ${avg}`;
+function renderTime(data){
+ let ul=document.getElementById('timeList');ul.innerHTML='';
+ Object.entries(data).forEach(([cat,hours])=>{
+  let best=Object.entries(hours).sort((a,b)=>b[1]-a[1])[0];
+  if(best){
+    let li=document.createElement('li');
+    li.textContent=`${cat}: ${best[0]}:00`;
+    ul.appendChild(li);
+  }
+ });
 }
-
-function renderCategoryTime(data){
-  const ul = document.getElementById('categoryTime');
-  ul.innerHTML='';
-
-  Object.entries(data).forEach(([cat, hours])=>{
-    const bestHour = Object.entries(hours).sort((a,b)=>b[1]-a[1])[0];
-    if(bestHour){
-      const li = document.createElement('li');
-      li.textContent = `${cat}: ${bestHour[0]}:00 пик`;
-      ul.appendChild(li);
-    }
-  });
-}
-
 </script>
-
+</div>
 </body>
 </html>
