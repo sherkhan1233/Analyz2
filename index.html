@@ -6,49 +6,59 @@
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <style>
-    body { font-family: Arial; padding: 20px; background:#f5f6fa }
-    h1 { text-align: center; }
-    .controls { margin-bottom: 20px; display:flex; gap:10px; flex-wrap:wrap }
-    canvas { max-width: 100%; margin-top:30px }
-    .card { background:white; padding:15px; border-radius:12px; box-shadow:0 4px 10px rgba(0,0,0,0.1); margin-bottom:20px }
+    body { font-family: Arial; padding: 10px; background:#f5f6fa }
+    h1 { text-align: center; font-size:20px }
+    .controls { margin-bottom: 10px; display:flex; gap:8px; flex-wrap:wrap }
+    canvas { max-width: 100%; margin-top:10px }
+    .card { background:white; padding:10px; border-radius:10px; box-shadow:0 2px 6px rgba(0,0,0,0.08); margin-bottom:10px }
+    .grid { display:grid; grid-template-columns:1fr 1fr; gap:10px }
+    ul { margin:0; padding-left:18px }
   </style>
 </head>
 <body>
 
-<h1>🚀 PRO Аналитика продаж</h1>
+<h1>📊 Аналитика продаж</h1>
 
 <div class="controls card">
   <input type="file" id="fileInput" accept=".xlsx,.xls,.csv" />
   <select id="groupBy">
-    <option value="hour">По часам</option>
-    <option value="day">По дням</option>
-    <option value="week">По неделям</option>
-    <option value="month">По месяцам</option>
+    <option value="hour">Часы</option>
+    <option value="day">Дни</option>
+    <option value="week">Недели</option>
+    <option value="month">Месяцы</option>
   </select>
   <select id="filterPoint">
     <option value="all">Все точки</option>
   </select>
-  <button onclick="processData()">Анализировать</button>
+  <button onclick="processData()">Анализ</button>
 </div>
 
 <div class="card">
-  <h3>📊 Выручка</h3>
   <canvas id="chart"></canvas>
 </div>
 
-<div class="card">
-  <h3>🍔 Категории</h3>
-  <canvas id="categoryChart"></canvas>
+<div class="grid">
+  <div class="card">
+    <b>🍔 Категории</b>
+    <canvas id="categoryChart"></canvas>
+  </div>
+
+  <div class="card">
+    <b>🏆 ТОП товары</b>
+    <ul id="topProducts"></ul>
+  </div>
 </div>
 
-<div class="card">
-  <h3>🏆 ТОП товары</h3>
-  <ul id="topProducts"></ul>
-</div>
+<div class="grid">
+  <div class="card">
+    <b>⏰ Лучшее время по категориям</b>
+    <ul id="categoryTime"></ul>
+  </div>
 
-<div class="card">
-  <h3>💰 Метрики</h3>
-  <p id="metrics"></p>
+  <div class="card">
+    <b>💰 Метрики</b>
+    <p id="metrics"></p>
+  </div>
 </div>
 
 <script>
@@ -61,12 +71,9 @@ document.getElementById('fileInput').addEventListener('change', function(e) {
   reader.onload = function(e) {
     const data = new Uint8Array(e.target.result);
     const workbook = XLSX.read(data, { type: 'array' });
-
     const sheet = workbook.Sheets[workbook.SheetNames[0]];
     rawData = XLSX.utils.sheet_to_json(sheet);
-
     fillPoints();
-    alert('Excel файл загружен');
   };
 
   reader.readAsArrayBuffer(file);
@@ -101,6 +108,7 @@ function processData(){
   const grouped = {};
   const categoryStats = {};
   const productStats = {};
+  const categoryTime = {};
 
   let total = 0;
   let count = 0;
@@ -116,7 +124,7 @@ function processData(){
     count++;
 
     let key;
-    if(groupBy==='hour') key = date.getHours()+':00';
+    if(groupBy==='hour') key = date.getHours();
     if(groupBy==='day') key = date.toLocaleDateString();
     if(groupBy==='week') key = new Date(date.setDate(date.getDate()-date.getDay())).toLocaleDateString();
     if(groupBy==='month') key = date.getFullYear()+'-'+(date.getMonth()+1);
@@ -132,14 +140,20 @@ function processData(){
         categoryStats[cat] = (categoryStats[cat]||0)+sum;
 
         productStats[clean] = (productStats[clean]||0)+1;
+
+        // время по категории
+        if(!categoryTime[cat]) categoryTime[cat] = {};
+        const hour = date.getHours();
+        categoryTime[cat][hour] = (categoryTime[cat][hour]||0)+1;
       });
     }
   });
 
   renderChart(grouped);
-  renderPie('categoryChart', categoryStats);
+  renderPie(categoryStats);
   renderTop(productStats);
   renderMetrics(total, count);
+  renderCategoryTime(categoryTime);
 }
 
 let chart;
@@ -152,15 +166,15 @@ function renderChart(data){
   });
 }
 
-function renderPie(id,data){
-  new Chart(document.getElementById(id),{
+function renderPie(data){
+  new Chart(document.getElementById('categoryChart'),{
     type:'pie',
     data:{ labels:Object.keys(data), datasets:[{data:Object.values(data)}] }
   });
 }
 
 function renderTop(data){
-  const top = Object.entries(data).sort((a,b)=>b[1]-a[1]).slice(0,10);
+  const top = Object.entries(data).sort((a,b)=>b[1]-a[1]).slice(0,5);
   const ul = document.getElementById('topProducts');
   ul.innerHTML='';
   top.forEach(([name,val])=>{
@@ -172,11 +186,21 @@ function renderTop(data){
 
 function renderMetrics(total,count){
   const avg = count? (total/count).toFixed(0):0;
-  document.getElementById('metrics').innerHTML = `
-    Общая выручка: ${total} <br>
-    Кол-во чеков: ${count} <br>
-    Средний чек: ${avg}
-  `;
+  document.getElementById('metrics').innerHTML = `Выручка: ${total}<br>Чеки: ${count}<br>Средний чек: ${avg}`;
+}
+
+function renderCategoryTime(data){
+  const ul = document.getElementById('categoryTime');
+  ul.innerHTML='';
+
+  Object.entries(data).forEach(([cat, hours])=>{
+    const bestHour = Object.entries(hours).sort((a,b)=>b[1]-a[1])[0];
+    if(bestHour){
+      const li = document.createElement('li');
+      li.textContent = `${cat}: ${bestHour[0]}:00 пик`;
+      ul.appendChild(li);
+    }
+  });
 }
 
 </script>
