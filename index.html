@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <title>PRO Аналитика продаж</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+  <style>
+    body { font-family: Arial; padding: 20px; background:#f5f6fa }
+    h1 { text-align: center; }
+    .controls { margin-bottom: 20px; display:flex; gap:10px; flex-wrap:wrap }
+    canvas { max-width: 100%; margin-top:30px }
+    .card { background:white; padding:15px; border-radius:12px; box-shadow:0 4px 10px rgba(0,0,0,0.1); margin-bottom:20px }
+  </style>
+</head>
+<body>
+
+<h1>🚀 PRO Аналитика продаж</h1>
+
+<div class="controls card">
+  <input type="file" id="fileInput" accept=".csv" />
+  <select id="groupBy">
+    <option value="hour">По часам</option>
+    <option value="day">По дням</option>
+    <option value="week">По неделям</option>
+    <option value="month">По месяцам</option>
+  </select>
+  <select id="filterPoint">
+    <option value="all">Все точки</option>
+  </select>
+  <button onclick="processData()">Анализировать</button>
+</div>
+
+<div class="card">
+  <h3>📊 Выручка</h3>
+  <canvas id="chart"></canvas>
+</div>
+
+<div class="card">
+  <h3>🍔 Категории</h3>
+  <canvas id="categoryChart"></canvas>
+</div>
+
+<div class="card">
+  <h3>🏆 ТОП товары</h3>
+  <ul id="topProducts"></ul>
+</div>
+
+<div class="card">
+  <h3>💰 Метрики</h3>
+  <p id="metrics"></p>
+</div>
+
+<script>
+let rawData = [];
+
+document.getElementById('fileInput').addEventListener('change', function(e) {
+  const file = e.target.files[0];
+  Papa.parse(file, {
+    header: true,
+    skipEmptyLines: true,
+    complete: function(results) {
+      rawData = results.data;
+      fillPoints();
+      alert('Файл загружен');
+    }
+  });
+});
+
+function fillPoints(){
+  const select = document.getElementById('filterPoint');
+  const points = [...new Set(rawData.map(r=>r['Торговая точка']))];
+  points.forEach(p=>{
+    const opt = document.createElement('option');
+    opt.value = p;
+    opt.textContent = p;
+    select.appendChild(opt);
+  });
+}
+
+function extractCategory(name){
+  if(!name) return 'Прочее';
+  name = name.toLowerCase();
+  if(name.includes('cola')||name.includes('напит')) return 'Напитки';
+  if(name.includes('lay')||name.includes('чипс')) return 'Снеки';
+  if(name.includes('kitkat')||name.includes('bounty')) return 'Шоколад';
+  if(name.includes('куриц')||name.includes('салат')) return 'Еда';
+  return 'Прочее';
+}
+
+function processData(){
+  const groupBy = document.getElementById('groupBy').value;
+  const selectedPoint = document.getElementById('filterPoint').value;
+
+  const grouped = {};
+  const categoryStats = {};
+  const productStats = {};
+
+  let total = 0;
+  let count = 0;
+
+  rawData.forEach(row=>{
+    if(selectedPoint !== 'all' && row['Торговая точка'] !== selectedPoint) return;
+
+    const date = new Date(row['Дата / время']);
+    const sum = parseFloat(row['Сумма']) || 0;
+    const products = row['Товары'];
+
+    total += sum;
+    count++;
+
+    let key;
+    if(groupBy==='hour') key = date.getHours()+':00';
+    if(groupBy==='day') key = date.toLocaleDateString();
+    if(groupBy==='week') key = new Date(date.setDate(date.getDate()-date.getDay())).toLocaleDateString();
+    if(groupBy==='month') key = date.getFullYear()+'-'+(date.getMonth()+1);
+
+    grouped[key] = (grouped[key]||0)+sum;
+
+    if(products){
+      const items = products.replace(/[\[\]]/g,'').split(',');
+      items.forEach(p=>{
+        const clean = p.trim();
+
+        // категории
+        const cat = extractCategory(clean);
+        categoryStats[cat] = (categoryStats[cat]||0)+sum;
+
+        // товары
+        productStats[clean] = (productStats[clean]||0)+1;
+      });
+    }
+  });
+
+  renderChart(grouped);
+  renderPie('categoryChart', categoryStats);
+  renderTop(productStats);
+  renderMetrics(total, count);
+}
+
+let chart;
+function renderChart(data){
+  const ctx = document.getElementById('chart');
+  if(chart) chart.destroy();
+  chart = new Chart(ctx, {
+    type:'bar',
+    data:{ labels:Object.keys(data), datasets:[{label:'Выручка', data:Object.values(data)}] }
+  });
+}
+
+function renderPie(id,data){
+  new Chart(document.getElementById(id),{
+    type:'pie',
+    data:{ labels:Object.keys(data), datasets:[{data:Object.values(data)}] }
+  });
+}
+
+function renderTop(data){
+  const top = Object.entries(data).sort((a,b)=>b[1]-a[1]).slice(0,10);
+  const ul = document.getElementById('topProducts');
+  ul.innerHTML='';
+  top.forEach(([name,val])=>{
+    const li = document.createElement('li');
+    li.textContent = name + ' ('+val+')';
+    ul.appendChild(li);
+  });
+}
+
+function renderMetrics(total,count){
+  const avg = count? (total/count).toFixed(0):0;
+  document.getElementById('metrics').innerHTML = `
+    Общая выручка: ${total} <br>
+    Кол-во чеков: ${count} <br>
+    Средний чек: ${avg}
+  `;
+}
+
+</script>
+
+</body>
+</html>
